@@ -1,0 +1,4 @@
+# Development-only baseline and PDF visual checks; never bundled with the Rust app.
+pypdfium2==4.30.0
+Pillow==9.0.1
+reportlab==3.6.8
