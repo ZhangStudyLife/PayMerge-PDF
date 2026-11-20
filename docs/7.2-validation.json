@@ -1,0 +1,34 @@
+{
+  "version": "7.2.0",
+  "release_source_commit": "3f94bd7",
+  "linux_tests_passed": 16,
+  "windows_tests_passed": 25,
+  "windows_tests_ignored": 0,
+  "distribution_file_count": 1,
+  "native_local": {
+    "source": "local",
+    "version": "7.2.0",
+    "upgrade_passed": true,
+    "rollback_passed": true,
+    "renamed_executable_supported": true,
+    "program_directory_contains_only_one_exe": true,
+    "personal_files_preserved": true,
+    "isolated_directory_removed": true,
+    "computer_use": false
+  },
+  "native_github": {
+    "source": "github",
+    "version": "7.2.0",
+    "upgrade_passed": true,
+    "rollback_passed": true,
+    "renamed_executable_supported": true,
+    "program_directory_contains_only_one_exe": true,
+    "personal_files_preserved": true,
+    "isolated_directory_removed": true,
+    "computer_use": false
+  },
+  "windows_embedded_engine_merge_and_render": true,
+  "original_invoice_directory_accessed": false,
+  "computer_use": false,
+  "synthetic_fixtures_removed": true
+}
