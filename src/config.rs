@@ -16,6 +16,18 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn load_migrated(app_dir: &Path, data_dir: &Path) -> Result<Self> {
+        if data_dir.join("config.json").is_file() {
+            return Self::load(data_dir);
+        }
+        let config = Self::load(app_dir)?;
+        if config.configured() {
+            fs::create_dir_all(data_dir)?;
+            config.save(data_dir)?;
+        }
+        Ok(config)
+    }
+
     pub fn load(app_dir: &Path) -> Result<Self> {
         let path = app_dir.join("config.json");
         match fs::read(&path) {

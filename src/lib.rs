@@ -1,3 +1,4 @@
+pub mod bundle;
 pub mod config;
 pub mod extract;
 pub mod merge;

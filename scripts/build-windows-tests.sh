@@ -2,6 +2,7 @@
 set -euo pipefail
 source "$(dirname -- "$0")/env.sh"
 cd "$PAYMERGE_ROOT"
+python3 scripts/prepare_bundle.py
 cargo test --locked --target x86_64-pc-windows-gnullvm --no-run --message-format=json > .cache/windows-tests-artifacts.jsonl
 python3 - <<'PY'
 import json

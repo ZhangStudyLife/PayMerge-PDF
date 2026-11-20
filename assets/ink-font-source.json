@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/google/fonts",
+  "revision": "406197b91ff39a93061c2c2eeaee67ddf2ae1f0d",
+  "source": "ofl/mashanzheng/MaShanZheng-Regular.ttf",
+  "source_sha256": "6d2546bb189c732a8ca29af9e22457b152387d158aa459e4ac2ce1e51788b7fb",
+  "subset_text": "合票设置版本更新第三方许可使用者配置保存0123456789.·PayMerge",
+  "fonttools_version": "4.29.1",
+  "renamed_family": "PayMerge Ink",
+  "output_sha256": "30043e61f0404789ee532fccaa5ceb5296b21b8ce7ff0b4b066a368416ea7c22"
+}

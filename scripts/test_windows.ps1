@@ -11,14 +11,13 @@ if ($Fixtures) {
 }
 $previousTemp = $env:TEMP
 $previousTmp = $env:TMP
-$previousPdfium = $env:PAYMERGE_PDFIUM_DIR
+$previousData = $env:PAYMERGE_DATA_DIR
 $previousFixtures = $env:PAYMERGE_TEST_FIXTURES
 try {
     New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
     $env:TEMP = $runRoot
     $env:TMP = $runRoot
-    $version = [Regex]::Match((Get-Content -LiteralPath (Join-Path $projectRoot 'Cargo.toml') -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
-    $env:PAYMERGE_PDFIUM_DIR = Join-Path $projectRoot ('dist\PayMerge-PDF-' + $version + '-windows-x64')
+    $env:PAYMERGE_DATA_DIR = Join-Path $runRoot 'user-data'
     $env:PAYMERGE_TEST_FIXTURES = $Fixtures
     $artifacts = Get-Content -LiteralPath (Join-Path $projectRoot '.cache\windows-tests-artifacts.jsonl') -Encoding UTF8 |
         ForEach-Object { $_ | ConvertFrom-Json } |
@@ -49,7 +48,7 @@ try {
 } finally {
     $env:TEMP = $previousTemp
     $env:TMP = $previousTmp
-    $env:PAYMERGE_PDFIUM_DIR = $previousPdfium
+    $env:PAYMERGE_DATA_DIR = $previousData
     $env:PAYMERGE_TEST_FIXTURES = $previousFixtures
     if (Test-Path -LiteralPath $runRoot) {
         $resolvedRun = (Resolve-Path -LiteralPath $runRoot).Path

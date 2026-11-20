@@ -4,6 +4,33 @@ use paymerge_pdf::{
     model::{Money, Recognition, Review, filename},
 };
 
+#[test]
+fn settings_migrate_to_private_storage_without_changing_relative_output_paths() {
+    let temporary = tempfile::tempdir().unwrap();
+    let app = temporary.path().join("程序 目录");
+    let data = temporary.path().join("用户 数据");
+    std::fs::create_dir(&app).unwrap();
+    assert!(!Config::load_migrated(&app, &data).unwrap().configured());
+    assert_eq!(std::fs::read_dir(&app).unwrap().count(), 0);
+    assert!(!data.exists());
+    std::fs::create_dir(app.join("输出")).unwrap();
+    let legacy = Config {
+        name: "测试者".into(),
+        group: "实验组".into(),
+        output_path_absolute: "missing-directory".into(),
+        output_path_relative: "输出".into(),
+    };
+    legacy.save(&app).unwrap();
+    let original = std::fs::read(app.join("config.json")).unwrap();
+    let mut migrated = Config::load_migrated(&app, &data).unwrap();
+    assert_eq!(migrated.output_directory(&app).unwrap(), app.join("输出"));
+    assert_eq!(std::fs::read(app.join("config.json")).unwrap(), original);
+    migrated.name = "新姓名".into();
+    migrated.save(&data).unwrap();
+    assert_eq!(Config::load_migrated(&app, &data).unwrap().name, "新姓名");
+    assert_eq!(std::fs::read(app.join("config.json")).unwrap(), original);
+}
+
 fn row(text: &str, x: f32, y: f32) -> Vec<Glyph> {
     text.chars()
         .enumerate()

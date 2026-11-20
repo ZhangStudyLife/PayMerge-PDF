@@ -34,7 +34,7 @@ impl Updates {
             downloading: false,
             available: None,
             staged: None,
-            notice: "自动检查 GitHub Releases".into(),
+            notice: "".into(),
             open: false,
             progress: (0, 0),
         }
@@ -55,7 +55,7 @@ impl Updates {
         }
         self.checking = true;
         self.last_check = Some(Instant::now());
-        self.notice = "正在检查更新…".into();
+        self.notice = "检查中…".into();
         let sender = self.sender.clone();
         let context = self.context.clone();
         thread::spawn(move || {
@@ -66,18 +66,18 @@ impl Updates {
         });
     }
 
-    fn download(&mut self, app_dir: &Path) {
+    fn download(&mut self, executable: &Path) {
         let Some(release) = self.available.clone() else {
             return;
         };
         self.downloading = true;
-        self.notice = "正在下载更新…".into();
+        self.notice = "下载中…".into();
         self.progress = (0, release.size);
-        let app_dir = app_dir.to_owned();
+        let executable = executable.to_owned();
         let sender = self.sender.clone();
         let context = self.context.clone();
         thread::spawn(move || {
-            let result = update::download_update(&release, &app_dir, |done, total| {
+            let result = update::download_update(&release, &executable, |done, total| {
                 let _ = sender.send(Event::Progress(done, total));
                 context.request_repaint();
             });
@@ -97,7 +97,7 @@ impl Updates {
                             self.available = Some(release);
                         }
                         Ok(None) => {
-                            self.notice = "已是最新公开版本".into();
+                            self.notice = "已是最新版本".into();
                             self.available = None;
                         }
                         Err(error) => self.notice = error.to_string(),
@@ -108,7 +108,7 @@ impl Updates {
                     self.downloading = false;
                     match result {
                         Ok(staged) => {
-                            self.notice = "更新已就绪，重启后完成升级".into();
+                            self.notice = "更新就绪".into();
                             self.staged = Some(staged);
                         }
                         Err(error) => self.notice = error.to_string(),
@@ -124,15 +124,15 @@ impl Updates {
         } else if self.downloading {
             "下载中"
         } else if self.staged.is_some() {
-            "更新就绪"
+            "待升级"
         } else if self.available.is_some() {
-            "有新版本"
+            "有更新"
         } else {
-            "检查更新"
+            "更新"
         }
     }
 
-    pub fn dialog(&mut self, app_dir: &Path, has_pending_files: bool) -> bool {
+    pub fn dialog(&mut self, has_pending_files: bool) -> bool {
         if !self.open {
             return false;
         }
@@ -145,7 +145,8 @@ impl Updates {
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .default_width(500.0)
+            .default_width(440.0)
+            .frame(egui::Frame::window(&self.context.global_style()).inner_margin(22))
             .show(&self.context, |ui| {
                 ui.label(
                     RichText::new(format!("PayMerge · v{}", update::CURRENT_VERSION))
@@ -160,11 +161,13 @@ impl Updates {
                             .color(ACCENT)
                             .strong(),
                     );
-                    egui::ScrollArea::vertical()
-                        .max_height(230.0)
-                        .show(ui, |ui| {
-                            ui.label(&release.notes);
-                        });
+                    egui::CollapsingHeader::new("更新说明").show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                ui.label(&release.notes);
+                            });
+                    });
                 }
                 if self.downloading {
                     let (done, total) = self.progress;
@@ -184,12 +187,8 @@ impl Updates {
                     );
                 }
                 ui.add_space(8.0);
-                ui.label("更新仅替换程序文件，保留姓名、组别、输出目录及已生成的 PDF。");
                 if self.staged.is_some() && has_pending_files {
-                    ui.colored_label(
-                        Color32::from_rgb(155, 99, 24),
-                        "还有待处理的材料，请先输出或清除，再重启升级。",
-                    );
+                    ui.colored_label(Color32::from_rgb(155, 99, 24), "请先完成或清空材料");
                 }
                 ui.horizontal(|ui| {
                     check = ui
@@ -217,23 +216,18 @@ impl Updates {
                             )
                             .clicked();
                     }
-                    ui.hyperlink_to(
-                        "GitHub Releases",
-                        format!("{}/releases", update::REPOSITORY_URL),
-                    );
+                    ui.hyperlink_to("GitHub", format!("{}/releases", update::REPOSITORY_URL));
                 });
-                ui.label(
-                    RichText::new("启动时检查，运行期间每 6 小时检查一次。")
-                        .size(12.0)
-                        .color(MUTED),
-                );
             });
         self.open = open;
         if check {
             self.check();
         }
         if download {
-            self.download(app_dir);
+            match std::env::current_exe() {
+                Ok(executable) => self.download(&executable),
+                Err(error) => self.notice = error.to_string(),
+            }
         }
         if install && let Some(staged) = self.staged.take() {
             match update::launch_installer(staged, std::process::id(), true) {

@@ -40,17 +40,10 @@ fn read_plan(path: &Path) -> Result<(PathBuf, InstallPlan)> {
     if payload.canonicalize()?.parent() != Some(stage.as_path()) {
         return Err(message("升级内容路径无效"));
     }
-    let mut paths = BTreeSet::new();
-    for file in &plan.files {
-        safe_package_path(&file.path)?;
-        if !paths.insert(file.path.to_lowercase()) {
-            return Err(message("升级计划存在重复文件"));
-        }
-    }
-    for required in [MAIN_EXE, UPDATER_EXE, "pdfium.dll", "SHA256SUMS.txt"] {
-        if !plan.files.iter().any(|file| file.path == required) {
-            return Err(message("升级计划缺少程序文件"));
-        }
+    safe_executable_name(&plan.executable_name)?;
+    if plan.files.len() != 1 || plan.files[0].path != MAIN_EXE || !valid_hash(&plan.files[0].sha256)
+    {
+        return Err(message("升级计划只能替换主程序"));
     }
     Ok((stage, plan))
 }
@@ -82,9 +75,7 @@ fn install_transaction(
 ) -> std::result::Result<(), InstallFailure> {
     let prepare = || -> Result<()> {
         verify_files(&stage.join("payload"), &plan.files)?;
-        for file in &plan.files {
-            ensure_plain_path(&plan.app_dir, &file.path)?;
-        }
+        ensure_plain_path(&plan.app_dir, &plan.executable_name)?;
         fs::create_dir(stage.join("backup"))?;
         Ok(())
     };
@@ -95,7 +86,7 @@ fn install_transaction(
     let mut applied = Vec::new();
     let operation = (|| -> Result<()> {
         for file in &plan.files {
-            let target = plan.app_dir.join(&file.path);
+            let target = plan.app_dir.join(&plan.executable_name);
             let incoming = stage.join("payload").join(&file.path);
             let backup = stage.join("backup").join(&file.path);
             fs::create_dir_all(target.parent().unwrap())?;
@@ -113,7 +104,7 @@ fn install_transaction(
             });
             fs::rename(incoming, target)?;
         }
-        verify(&plan.app_dir.join(MAIN_EXE))?;
+        verify(&plan.app_dir.join(&plan.executable_name))?;
         Ok(())
     })();
     if let Err(error) = operation {
@@ -242,21 +233,19 @@ pub fn copy_program_access(source: &Path, target: &Path) -> Result<()> {
 
 pub fn launch_installer(staged: StagedUpdate, parent_pid: u32, restart: bool) -> Result<Child> {
     let plan_path = staged.write_plan(parent_pid, restart)?;
-    let source = staged.app_dir.join(UPDATER_EXE);
+    let source = staged.app_dir.join(&staged.executable_name);
     let runner = staged.directory.path().join("runner.exe");
     fs::copy(&source, &runner)?;
     #[cfg(windows)]
     {
         copy_program_access(&source, &runner)?;
-        for name in [MAIN_EXE, UPDATER_EXE, "pdfium.dll"] {
-            copy_program_access(
-                &staged.app_dir.join(name),
-                &staged.directory.path().join("payload").join(name),
-            )?;
-        }
+        copy_program_access(
+            &source,
+            &staged.directory.path().join("payload").join(MAIN_EXE),
+        )?;
     }
     let log = fs::File::create(staged.directory.path().join("installer.log"))?;
-    let child = hidden(Command::new(&runner).arg("--apply").arg(&plan_path))
+    let child = hidden(Command::new(&runner).arg("--apply-update").arg(&plan_path))
         .stdout(std::process::Stdio::from(log.try_clone()?))
         .stderr(std::process::Stdio::from(log))
         .spawn()?;
@@ -290,7 +279,7 @@ pub fn apply_plan(path: &Path) -> Result<Receipt> {
         serde_json::to_vec_pretty(&receipt)?,
     )?;
     if plan.restart && receipt.can_cleanup {
-        Command::new(plan.app_dir.join(MAIN_EXE))
+        Command::new(plan.app_dir.join(&plan.executable_name))
             .arg("--finish-update")
             .arg(&stage)
             .arg(std::process::id().to_string())
@@ -316,7 +305,6 @@ pub fn finish_update(stage: &Path, helper_pid: u32, app_dir: &Path) -> Result<St
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn fixture() -> (tempfile::TempDir, tempfile::TempDir, InstallPlan) {
         let app = tempfile::tempdir().unwrap();
         let stage = tempfile::Builder::new()
@@ -325,100 +313,79 @@ mod tests {
             .unwrap();
         fs::create_dir(stage.path().join("payload")).unwrap();
         fs::write(app.path().join("config.json"), b"personal settings").unwrap();
-        fs::write(app.path().join("reimbursement.pdf"), b"user output").unwrap();
-        let mut files = Vec::new();
-        for name in [MAIN_EXE, "pdfium.dll", UPDATER_EXE, "SHA256SUMS.txt"] {
-            fs::write(app.path().join(name), format!("old {name}")).unwrap();
-            let path = stage.path().join("payload").join(name);
-            fs::write(&path, format!("new {name}")).unwrap();
-            files.push(PackageFile {
-                path: name.into(),
-                sha256: hash_file(&path).unwrap(),
-            });
-        }
+        fs::write(app.path().join("output.pdf"), b"user output").unwrap();
+        let executable_name = "合票 工具.exe".to_owned();
+        fs::write(app.path().join(&executable_name), b"old executable").unwrap();
+        let incoming = stage.path().join("payload").join(MAIN_EXE);
+        fs::write(&incoming, b"new executable").unwrap();
         let plan = InstallPlan {
-            version: "7.1.0".into(),
+            version: "7.3.0".into(),
             app_dir: app.path().canonicalize().unwrap(),
+            executable_name,
             parent_pid: 0,
             restart: false,
-            files,
+            files: vec![PackageFile {
+                path: MAIN_EXE.into(),
+                sha256: hash_file(&incoming).unwrap(),
+            }],
         };
         (app, stage, plan)
     }
-
     #[test]
-    fn successful_install_preserves_personal_files() {
+    fn installation_replaces_only_the_running_executable() {
         let (app, stage, plan) = fixture();
         assert!(install_transaction(stage.path(), &plan, |_| Ok(())).is_ok());
         assert_eq!(
-            fs::read(app.path().join(MAIN_EXE)).unwrap(),
-            format!("new {MAIN_EXE}").as_bytes()
+            fs::read(app.path().join(&plan.executable_name)).unwrap(),
+            b"new executable"
         );
         assert_eq!(
             fs::read(app.path().join("config.json")).unwrap(),
             b"personal settings"
         );
         assert_eq!(
-            fs::read(app.path().join("reimbursement.pdf")).unwrap(),
+            fs::read(app.path().join("output.pdf")).unwrap(),
             b"user output"
         );
+        assert!(!app.path().join(MAIN_EXE).exists());
     }
-
     #[test]
-    fn failed_verification_restores_every_program_file() {
+    fn failed_startup_restores_the_exact_previous_executable() {
         let (app, stage, plan) = fixture();
-        let failure = install_transaction(stage.path(), &plan, |_| {
-            Err(message("simulated startup failure"))
-        })
-        .err()
-        .unwrap();
+        let failure = install_transaction(stage.path(), &plan, |_| Err(message("invalid version")))
+            .err()
+            .unwrap();
         assert!(failure.restored);
-        for name in [MAIN_EXE, "pdfium.dll", UPDATER_EXE] {
-            assert_eq!(
-                fs::read(app.path().join(name)).unwrap(),
-                format!("old {name}").as_bytes()
-            );
-        }
         assert_eq!(
-            fs::read(app.path().join("config.json")).unwrap(),
-            b"personal settings"
+            fs::read(app.path().join(&plan.executable_name)).unwrap(),
+            b"old executable"
         );
     }
-
     #[test]
-    fn changed_payload_is_rejected_before_any_replacement() {
+    fn changed_payload_is_rejected_before_replacement() {
         let (app, stage, plan) = fixture();
-        fs::write(stage.path().join("payload/pdfium.dll"), b"tampered").unwrap();
+        fs::write(stage.path().join("payload").join(MAIN_EXE), b"tampered").unwrap();
         assert!(install_transaction(stage.path(), &plan, |_| Ok(())).is_err());
         assert_eq!(
-            fs::read(app.path().join(MAIN_EXE)).unwrap(),
-            format!("old {MAIN_EXE}").as_bytes()
+            fs::read(app.path().join(&plan.executable_name)).unwrap(),
+            b"old executable"
         );
     }
-
     #[cfg(windows)]
     #[test]
-    fn locked_dll_rolls_back_previously_replaced_executable() {
+    fn occupied_executable_is_left_intact() {
         use std::os::windows::fs::OpenOptionsExt;
         let (app, stage, plan) = fixture();
         let held = fs::OpenOptions::new()
             .read(true)
-            .write(true)
             .share_mode(0)
-            .open(app.path().join("pdfium.dll"))
+            .open(app.path().join(&plan.executable_name))
             .unwrap();
-        let failure = install_transaction(stage.path(), &plan, |_| Ok(()))
-            .err()
-            .unwrap();
-        assert!(failure.restored);
+        assert!(install_transaction(stage.path(), &plan, |_| Ok(())).is_err());
         drop(held);
         assert_eq!(
-            fs::read(app.path().join(MAIN_EXE)).unwrap(),
-            format!("old {MAIN_EXE}").as_bytes()
-        );
-        assert_eq!(
-            fs::read(app.path().join("pdfium.dll")).unwrap(),
-            b"old pdfium.dll"
+            fs::read(app.path().join(&plan.executable_name)).unwrap(),
+            b"old executable"
         );
     }
 }

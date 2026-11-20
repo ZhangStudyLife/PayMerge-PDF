@@ -4,6 +4,11 @@ mod ui;
 
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 3 && args[1] == "--apply-update" {
+        let success = paymerge_pdf::update::apply_plan(std::path::Path::new(&args[2]))
+            .is_ok_and(|receipt| receipt.success);
+        std::process::exit(if success { 0 } else { 1 });
+    }
     if args.get(1).is_some_and(|arg| arg == "--verify-install") {
         let valid = (|| -> paymerge_pdf::Result<()> {
             if args.get(2).and_then(|arg| arg.to_str())
@@ -11,14 +16,7 @@ fn main() {
             {
                 return Err(paymerge_pdf::message("安装版本不一致"));
             }
-            let executable = std::env::current_exe()?;
-            let directory = executable
-                .parent()
-                .ok_or_else(|| paymerge_pdf::message("安装目录无效"))?;
-            let bindings = pdfium_render::prelude::Pdfium::bind_to_library(
-                pdfium_render::prelude::Pdfium::pdfium_platform_library_name_at_path(directory),
-            )?;
-            let pdf = pdfium_render::prelude::Pdfium::new(bindings);
+            let pdf = paymerge_pdf::pdf::engine()?;
             let _document = pdf.create_new_pdf()?;
             Ok(())
         })()

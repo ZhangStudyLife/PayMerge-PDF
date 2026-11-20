@@ -1,0 +1,11 @@
+{
+  "version": "7.2.0",
+  "distribution_file_count": 1,
+  "filename": "PayMerge-PDF.exe",
+  "bytes": 25356288,
+  "sha256": "438a469ef18e94a0281f27609a81796857b6ef7a5924f89275a6dbc88be8b209",
+  "embedded_pdfium": true,
+  "embedded_fonts": true,
+  "embedded_third_party_notices": true,
+  "adjacent_dll_config_or_license_files_required": false
+}

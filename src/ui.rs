@@ -1,9 +1,11 @@
 use eframe::egui::{self, Color32, RichText};
+#[cfg(test)]
+use paymerge_pdf::model::Recognition;
 use paymerge_pdf::{
     config::{Config, numbered_path, validate_personal},
     extract::extract_invoice,
     merge::merge_invoice,
-    model::{InvoiceData, Recognition, Review, filename},
+    model::{InvoiceData, Review, filename},
 };
 use std::{
     collections::VecDeque,
@@ -17,8 +19,8 @@ mod update_view;
 mod view;
 use update_view::Updates;
 
-const ACCENT: Color32 = Color32::from_rgb(17, 123, 99);
-const MUTED: Color32 = Color32::from_rgb(107, 116, 130);
+const ACCENT: Color32 = Color32::from_rgb(45, 44, 40);
+const MUTED: Color32 = Color32::from_rgb(116, 112, 104);
 
 enum Work {
     Extract(PathBuf, u64),
@@ -41,9 +43,11 @@ pub fn run(startup_status: Option<String>) -> eframe::Result {
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."));
+    let data_dir = paymerge_pdf::bundle::user_data_dir()
+        .map_err(|error| eframe::Error::AppCreation(Box::new(error)))?;
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([1120.0, 880.0])
-        .with_min_inner_size([960.0, 760.0]);
+        .with_inner_size([860.0, 650.0])
+        .with_min_inner_size([760.0, 590.0]);
     if let Ok(icon) = image::load_from_memory_with_format(
         include_bytes!("../source/icon.ico"),
         image::ImageFormat::Ico,
@@ -61,10 +65,10 @@ pub fn run(startup_status: Option<String>) -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "ASC 实验室发票合并工具 · Rust",
+        "合票 · PayMerge",
         options,
         Box::new(move |cc| {
-            let mut app = App::new(cc, app_dir);
+            let mut app = App::new(cc, app_dir, data_dir);
             if let Some(status) = startup_status {
                 app.set_status(status.clone(), false);
                 app.updates.notice = status;
@@ -76,6 +80,8 @@ pub fn run(startup_status: Option<String>) -> eframe::Result {
 
 struct App {
     app_dir: PathBuf,
+    data_dir: PathBuf,
+    show_notices: bool,
     config: Config,
     draft: Config,
     draft_output: String,
@@ -95,11 +101,11 @@ struct App {
 }
 
 impl App {
-    fn new(cc: &eframe::CreationContext<'_>, app_dir: PathBuf) -> Self {
-        Self::create(&cc.egui_ctx, app_dir)
+    fn new(cc: &eframe::CreationContext<'_>, app_dir: PathBuf, data_dir: PathBuf) -> Self {
+        Self::create(&cc.egui_ctx, app_dir, data_dir)
     }
 
-    fn create(egui_context: &egui::Context, app_dir: PathBuf) -> Self {
+    fn create(egui_context: &egui::Context, app_dir: PathBuf, data_dir: PathBuf) -> Self {
         view::configure_context(egui_context);
         let (sender, worker) = mpsc::channel::<Work>();
         let (done, receiver) = mpsc::channel();
@@ -127,8 +133,8 @@ impl App {
                 context.request_repaint();
             }
         });
-        let (config, status, error) = match Config::load(&app_dir) {
-            Ok(config) => (config, "请选择发票、购买记录和支付记录".into(), false),
+        let (config, status, error) = match Config::load_migrated(&app_dir, &data_dir) {
+            Ok(config) => (config, String::new(), false),
             Err(error) => (Config::default(), error.to_string(), true),
         };
         Self {
@@ -136,6 +142,8 @@ impl App {
             draft_output: config.output_path_absolute.clone(),
             show_config: !config.configured(),
             app_dir,
+            data_dir,
+            show_notices: false,
             config,
             pdf: None,
             images: Vec::new(),
@@ -207,7 +215,7 @@ impl App {
         self.generation += 1;
         self.extracting = true;
         let _ = self.sender.send(Work::Extract(path, self.generation));
-        self.set_status("正在识别发票信息…", false);
+        self.set_status("识别中…", false);
     }
 
     fn completed(&mut self) {
@@ -222,9 +230,9 @@ impl App {
                             self.review = Review::from_invoice(&data);
                             self.set_status(
                                 if uncertain {
-                                    "请核对票面并补填金额、发票号码"
+                                    "请补填金额与票号"
                                 } else {
-                                    "识别完成，请核对文件与金额后输出"
+                                    ""
                                 },
                                 false,
                             );
@@ -243,13 +251,6 @@ impl App {
                                 format!("已生成 {pages} 页 PDF：{}", path.display()),
                                 false,
                             );
-                            rfd::MessageDialog::new()
-                                .set_title("输出成功")
-                                .set_description(format!(
-                                    "已生成 {pages} 页 PDF\n\n{}",
-                                    path.display()
-                                ))
-                                .show();
                         }
                         Err(error) => self.set_status(error.to_string(), true),
                     }
@@ -318,64 +319,75 @@ impl App {
         let mut open = true;
         let mut save = false;
         let mut cancel = false;
-        egui::Window::new("使用者配置")
+        egui::Window::new("设置")
             .open(&mut open)
+            .title_bar(false)
             .collapsible(false)
             .resizable(false)
-            .title_bar(false)
             .frame(egui::Frame::window(&context.global_style()).inner_margin(24))
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .default_width(490.0)
+            .default_width(440.0)
             .show(context, |ui| {
-                ui.heading("使用者配置");
-                ui.label(
-                    RichText::new("姓名和组别将用于输出文件名")
-                        .size(13.0)
-                        .color(MUTED),
-                );
-                ui.add_space(12.0);
-                let name_label = ui.label("姓名");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.draft.name)
-                        .desired_width(f32::INFINITY)
-                        .margin(egui::vec2(10.0, 8.0)),
-                )
-                .labelled_by(name_label.id);
-                let group_label = ui.label("组别");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.draft.group)
-                        .desired_width(f32::INFINITY)
-                        .margin(egui::vec2(10.0, 8.0)),
-                )
-                .labelled_by(group_label.id);
-                let output_label = ui.label("输出目录（留空使用程序所在目录）");
+                ui.heading("设置");
+                ui.add_space(14.0);
+                ui.columns(2, |columns| {
+                    let name = columns[0].label(RichText::new("姓名").size(12.0).color(MUTED));
+                    columns[0]
+                        .add(
+                            egui::TextEdit::singleline(&mut self.draft.name)
+                                .desired_width(f32::INFINITY)
+                                .margin(egui::vec2(9.0, 8.0)),
+                        )
+                        .labelled_by(name.id);
+                    let group = columns[1].label(RichText::new("组别").size(12.0).color(MUTED));
+                    columns[1]
+                        .add(
+                            egui::TextEdit::singleline(&mut self.draft.group)
+                                .desired_width(f32::INFINITY)
+                                .margin(egui::vec2(9.0, 8.0)),
+                        )
+                        .labelled_by(group.id);
+                });
+                ui.add_space(8.0);
+                let output = ui.label(RichText::new("保存位置").size(12.0).color(MUTED));
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.draft_output)
-                            .desired_width(360.0)
-                            .margin(egui::vec2(10.0, 8.0)),
+                            .desired_width(330.0)
+                            .margin(egui::vec2(9.0, 8.0))
+                            .hint_text("当前目录"),
                     )
-                    .labelled_by(output_label.id);
+                    .labelled_by(output.id);
                     if ui.button("浏览").clicked()
-                        && let Some(folder) = rfd::FileDialog::new()
-                            .set_title("选择输出目录")
-                            .pick_folder()
+                        && let Some(folder) =
+                            rfd::FileDialog::new().set_title("保存位置").pick_folder()
                     {
                         self.draft_output = folder.to_string_lossy().into_owned();
                     }
                 });
-                ui.add_space(12.0);
+                ui.add_space(20.0);
                 ui.horizontal(|ui| {
                     save = ui
                         .add(
-                            egui::Button::new(RichText::new("保存配置").color(Color32::WHITE))
-                                .fill(ACCENT)
-                                .min_size(egui::vec2(120.0, 38.0)),
+                            egui::Button::new(
+                                RichText::new("保存").color(Color32::from_rgb(248, 246, 240)),
+                            )
+                            .fill(ACCENT)
+                            .min_size(egui::vec2(86.0, 35.0)),
                         )
                         .clicked();
-                    cancel = ui
-                        .add(egui::Button::new("取消").min_size(egui::vec2(76.0, 38.0)))
-                        .clicked();
+                    cancel = ui.add(egui::Button::new("取消").frame(false)).clicked();
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new("许可").size(11.0).color(MUTED))
+                                    .frame(false),
+                            )
+                            .clicked()
+                        {
+                            self.show_notices = true;
+                        }
+                    });
                 });
             });
         if !open || cancel {
@@ -397,7 +409,8 @@ impl App {
                     }
                     std::fs::create_dir_all(&self.draft.output_path_absolute)?;
                 }
-                self.draft.save(&self.app_dir)?;
+                std::fs::create_dir_all(&self.data_dir)?;
+                self.draft.save(&self.data_dir)?;
                 Ok(())
             })();
             match result {
@@ -438,9 +451,10 @@ impl eframe::App for App {
         }
         self.panels(ui);
         self.configuration(&context);
+        view::notices_window(&context, &mut self.show_notices);
         let pending =
             self.pdf.is_some() || !self.images.is_empty() || self.extracting || self.merging;
-        if self.updates.dialog(&self.app_dir, pending) {
+        if self.updates.dialog(pending) {
             context.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if self.extracting || self.merging || self.updates.checking || self.updates.downloading {
@@ -460,6 +474,7 @@ fn ask(title: &str, message: &str) -> bool {
         == rfd::MessageDialogResult::Yes
 }
 
+#[cfg(test)]
 fn field_status<T>(field: &Recognition<T>) -> &'static str {
     match field {
         Recognition::Recognized(_) => "已识别",
@@ -485,7 +500,11 @@ mod tests {
     }
 
     fn app(directory: &Path) -> (App, mpsc::Receiver<Work>, mpsc::Sender<Completed>) {
-        let mut app = App::create(&egui::Context::default(), directory.to_owned());
+        let mut app = App::create(
+            &egui::Context::default(),
+            directory.to_owned(),
+            directory.join("settings"),
+        );
         let (sender, work) = mpsc::channel();
         let (done, receiver) = mpsc::channel();
         app.sender = sender;
@@ -603,7 +622,11 @@ mod tests {
     fn headless_layout_handles_recognized_missing_and_conflicting_fields() {
         let directory = tempfile::tempdir().unwrap();
         let context = egui::Context::default();
-        let mut app = App::create(&context, directory.path().to_owned());
+        let mut app = App::create(
+            &context,
+            directory.path().to_owned(),
+            directory.path().join("settings"),
+        );
         app.show_config = false;
         for state in 0..3 {
             let mut data = invoice();
@@ -653,7 +676,11 @@ mod tests {
         ] {
             let directory = tempfile::tempdir().unwrap();
             std::fs::create_dir(directory.path().join("报销材料")).unwrap();
-            let mut app = App::create(&egui::Context::default(), directory.path().to_owned());
+            let mut app = App::create(
+                &egui::Context::default(),
+                directory.path().to_owned(),
+                directory.path().join("settings"),
+            );
             app.config = Config {
                 name: "示例使用者".into(),
                 group: "实验组A".into(),
@@ -675,10 +702,10 @@ mod tests {
                 ];
                 app.data = Some(invoice());
                 app.review = Review::from_invoice(app.data.as_ref().unwrap());
-                app.status = "识别完成，请核对文件与金额后输出".into();
+                app.status = "".into();
             }
             let mut harness = Harness::builder()
-                .with_size(egui::vec2(1120.0, 880.0))
+                .with_size(egui::vec2(860.0, 650.0))
                 .with_context_setup(view::configure_context)
                 .build_ui_state(
                     |ui, app: &mut App| {

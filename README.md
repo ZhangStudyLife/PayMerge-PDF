@@ -1,50 +1,46 @@
-# PayMerge-PDF
+# 合票 · PayMerge-PDF
 
-Windows 发票三合一桌面工具。将一份 PDF 发票、购买记录和支付记录整理成 A4 报销材料；使用 Rust 实现，免安装，无需 Python。
+发票、购买记录、支付记录，合成一份 A4 PDF。Rust 原生 Windows 程序，极简水墨界面，**只需一个 EXE**。
 
-[下载 Windows x64 发布包](https://github.com/ZhangStudyLife/PayMerge-PDF/releases/latest) · [使用说明](docs/使用说明.md) · [7.1 测试报告](docs/7.1-测试报告.md)
+[下载单文件版](https://github.com/ZhangStudyLife/PayMerge-PDF/releases/latest/download/PayMerge-PDF.exe) · [使用说明](docs/使用说明.md) · [7.2 测试报告](docs/7.2-测试报告.md)
 
-![材料核对工作台](docs/previews/workspace-ready.png)
+![合票](docs/previews/workspace-ready.png)
 
 ## 使用
 
-解压完整 ZIP，运行 `ASC_InvoiceMergeTool.exe`，保留同目录的 `PayMergeUpdater.exe`、`pdfium.dll` 和 `licenses`。首次填写姓名、组别和输出目录，然后添加发票与两张截图，核对金额和完整票号，点击“一键输出 PDF”。
+下载 `PayMerge-PDF.exe` 即可运行，无需安装 Python 或 Rust，也不需要旁置 DLL、升级器、字体、说明或许可文件。
 
-- 有文字层的电子发票按字段标签和坐标识别票号、价税合计、日期及完整销售方名称。金额、票号可更正；缺失或冲突时需补填并确认。
-- 图片型 PDF 通过人工填写金额和票号完成输出，不包含 OCR。
-- 保留所有发票页，按 A4、300 DPI、10 mm 边距等比排布，最后一张发票与两张截图共页。
-- 文件名为“姓名_组别_金额_票号后四位.pdf”，重名可覆盖、添加序号或取消。
-- 票据在本机处理。网络仅用于检查和下载公开程序更新，不上传票据、配置或识别内容。
+在“设置”填写姓名、组别及保存位置。点击“添加”或拖入一份 PDF 与两张截图，截图按购买、支付的顺序添加。核对票号、金额，点击“合并 PDF”。缺失或冲突的关键字段需要补填并确认；图片型 PDF 通过人工填写完成输出，不包含 OCR。
 
-## 版本更新
+保留原有多页排布、A4 / 300 DPI / 10 mm 边距、等比缩放和自动命名。文件名为“姓名_组别_金额_票号后四位.pdf”，重名可覆盖、加序号或取消。票据在本地处理，不上传。
 
-程序启动时、运行期间每 6 小时自动检查本仓库的 GitHub Releases；侧栏也可手动检查。发现新版后点击“下载更新”，核对更新说明，再点击“重启并升级”。只跟踪正式 Release，不跟踪每次源码提交。
+## 单文件与设置
 
-下载包与 GitHub 提供的 SHA256 核对，解压后逐项核对随包清单。独立 Rust 升级程序等待主程序退出后替换程序文件，启动新版校验版本和 PDFium；失败时恢复旧文件。`config.json` 和已输出的 PDF 不参与替换。有待处理材料时需先输出或清除，才能重启升级。断网不会影响合并。
+分发物和程序目录只需要一个 EXE。PDFium、中文字体、毛笔字标题字体和第三方许可均内嵌；运行时将 PDF 引擎校验并加载到用户缓存，配置保存在 `%LOCALAPPDATA%\PayMerge-PDF`。字体及许可在内存中读取，“设置 → 许可”可以查看许可全文。程序目录不会生成 DLL、升级器、许可文件或新的 `config.json`。
 
-7.0 及更早版本没有内置更新入口，首次需手动下载 7.1 或更新版本，将原 `config.json` 复制到新程序旁。
+旧版 `config.json` 可在第一次启动时从 EXE 旁自动迁移到用户数据目录，保留姓名、组别和输出路径规则；旧配置原件不删除。
 
-维护者发布新版时，先更新 `Cargo.toml` 版本号并构建，在本仓库创建对应的 `vX.Y.Z` 正式 Release，上传 `dist/PayMerge-PDF-X.Y.Z-windows-x64.zip` 及其 `.sha256` 文件。GitHub 生成 ZIP 的 SHA256 后，客户端即可发现并校验该版本。
+## 更新
 
-## 构建
+启动时和运行期间每 6 小时检查本仓库正式 GitHub Releases，也可点击“更新”。下载单 EXE、核对 GitHub SHA256 后，点击“重启并升级”。程序复制自身作为临时升级进程，等待旧实例退出后替换原 EXE，并校验新版版本号和内嵌 PDF 引擎；失败时恢复原文件。个人设置和输出 PDF 不参与替换，升级暂存文件完成后清理。支持中文、空格路径及重命名后的 EXE。
 
-开发与 Windows 交叉编译在 Linux x64 服务器完成。工具链、依赖缓存、临时目录和产物均留在项目目录，不修改全局 shell 配置。需要已有 Python 3.9+、curl、tar、xz 和系统 C 编译环境。
+**7.1 及更早版本首次切换到单文件版需要手动下载。** 旧版本采用 ZIP 更新协议；7.2 起使用 EXE 更新协议。之后发布新版时，更新 `Cargo.toml` 版本号，创建对应 `vX.Y.Z` 正式 Release 并上传 `PayMerge-PDF.exe`，客户端即可发现并校验。
+
+## 构建与测试
+
+开发和 Windows 交叉编译在 Linux x64 服务器完成。工具链、依赖缓存、临时文件和构建产物均在项目内，不修改全局 shell 配置。
 
 ```bash
 bash scripts/setup.sh
 source scripts/env.sh
 bash scripts/check.sh
 bash scripts/build.sh
+bash scripts/build-windows-tests.sh
+cargo build --locked --target x86_64-pc-windows-gnullvm --examples
 ```
 
-固定 Rust 1.100.0、LLVM-MinGW 20261117 UCRT、目标 `x86_64-pc-windows-gnullvm`、eframe 0.37.0、pdfium-render 0.9.5 和 PDFium 8125；其他依赖由 `Cargo.lock` 锁定。发布启用优化、LTO 和符号剥离。产物及 SHA256 文件位于 `dist/`。下载脚本遵循进程的 `HTTPS_PROXY`。
+固定 Rust 1.100.0、LLVM-MinGW 20261117 UCRT、目标 `x86_64-pc-windows-gnullvm`、eframe 0.37.0、pdfium-render 0.9.5、PDFium 8125；其余依赖见 `Cargo.lock`。发布启用优化、LTO 和符号剥离。`scripts/prepare_bundle.py` 在构建前压缩 PDFium、字体和许可，产物为 `dist/PayMerge-PDF-X.Y.Z-windows-x64/PayMerge-PDF.exe`。
 
-`src/` 包含界面、识别、合成和升级代码。`scripts/package_licenses.py` 汇集正式依赖、PDFium 和字体许可。`examples/` 为开发验收入口，不进入发布包。
+Windows 在项目映射目录运行 `scripts/test_windows.ps1` 和 `scripts/test_single_file.ps1 -Source local`。正式发布后可用 `-Source github` 验证实际下载、升级与回滚。脚本将用户数据及运行缓存隔离到项目 `.tmp`，并在结束时清理；无需安装 Windows 编译环境。`PAYMERGE_DATA_DIR` 用于测试隔离，正常运行无需设置。
 
-## 验证
-
-服务器执行 `scripts/check.sh` 完成格式、核心测试及两个目标的 Clippy。执行 `scripts/build-windows-tests.sh` 后，在 Windows 的项目映射目录运行 `scripts/test_windows.ps1`，直接运行服务器生成的原生测试程序，无需安装 Windows 编译环境。
-
-界面预览通过 `egui_kittest` 离屏 GPU 渲染生成，仅使用合成的示例字段；测试不使用 Computer Use、桌面自动化或系统鼠标键盘注入。原生文件对话框和系统拖放的实际交互需人工验收。
-
-真实票据验收只对用户指定的只读目录制作隔离副本：`python scripts/prepare_samples.py prepare <样例目录>`。服务器运行 `scripts/setup-validation.sh`、构建 `acceptance` 示例并运行 `scripts/acceptance_server.py`。完成或失败后运行 `python scripts/prepare_samples.py cleanup`，再次核对原件 SHA256 并清理副本、输出和字段明细。真实票据、个人配置、开发缓存及原 Python 迁移参考均不入库。
+UI 通过 egui_kittest 离屏渲染检查。测试不使用 Computer Use 或系统鼠标键盘注入。真实票据、个人配置及开发缓存不入库。字体来源和子集记录见 `assets/font-source.json` 与 `assets/ink-font-source.json`。
