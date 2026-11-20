@@ -1,0 +1,21 @@
+{
+  "version": "7.1.0",
+  "release_source_commit": "e4348406308472dc6882440ba6aecc0b55abaf9a",
+  "repository": "https://github.com/ZhangStudyLife/PayMerge-PDF",
+  "release": "https://github.com/ZhangStudyLife/PayMerge-PDF/releases/tag/v7.1.0",
+  "linux_tests_passed": 17,
+  "windows_tests_passed": 25,
+  "windows_tests_ignored": 0,
+  "native_local_upgrade_passed": true,
+  "native_local_rollback_passed": true,
+  "native_github_upgrade_passed": true,
+  "native_github_rollback_passed": true,
+  "current_release_not_reinstalled": true,
+  "github_asset_sha256": "b7ecf26e512294abb5a9a2025aed1c5657edf526f69b101ae77e1f13224a150d",
+  "configuration_and_synthetic_output_preserved": true,
+  "isolated_test_copies_removed": true,
+  "temporary_test_channel_removed": true,
+  "original_invoice_directory_accessed_this_update": false,
+  "computer_use_used": false,
+  "method": "server builds; Windows native Rust tests and updater acceptance; offscreen GPU UI rendering"
+}
